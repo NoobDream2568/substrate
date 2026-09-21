@@ -18,7 +18,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/url"
+	"os"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -104,8 +106,50 @@ func (s *s3Store) Copy(ctx context.Context, srcBucket, srcObject, dstBucket, dst
 		Key:        aws.String(dstObject),
 		CopySource: aws.String(copySource(srcBucket, srcObject)),
 	})
+	if err == nil {
+		return nil
+	}
+	// Alibaba OSS answers CopyObject with HTTP 200 and an empty body the SDK
+	// cannot deserialize, and writes a zero-byte destination instead of the
+	// contents. Fall back to a portable download+upload copy, which any store
+	// honors; it also overwrites the empty placeholder OSS left.
+	return s.copyViaGetPut(ctx, srcBucket, srcObject, dstBucket, dstObject, size)
+}
+
+// copyViaGetPut copies an object by downloading and re-uploading it, for stores
+// whose CopyObject is unavailable or non-conformant.
+func (s *s3Store) copyViaGetPut(ctx context.Context, srcBucket, srcObject, dstBucket, dstObject string, size int64) error {
+	rc, err := s.client.GetObject(ctx, &s3.GetObjectInput{
+		Bucket: aws.String(srcBucket),
+		Key:    aws.String(srcObject),
+	})
 	if err != nil {
-		return fmt.Errorf("while copying s3://%s/%s to s3://%s/%s: %w", srcBucket, srcObject, dstBucket, dstObject, err)
+		return fmt.Errorf("while reading s3://%s/%s: %w", srcBucket, srcObject, err)
+	}
+	defer rc.Body.Close()
+
+	// PutObject needs a seekable body to sign and send, so stage the download.
+	tmp, err := os.CreateTemp("", "objectstore-copy-*")
+	if err != nil {
+		return fmt.Errorf("while staging a copy of s3://%s/%s: %w", srcBucket, srcObject, err)
+	}
+	defer os.Remove(tmp.Name())
+	defer tmp.Close()
+	if _, err := io.Copy(tmp, rc.Body); err != nil {
+		return fmt.Errorf("while reading s3://%s/%s: %w", srcBucket, srcObject, err)
+	}
+	if _, err := tmp.Seek(0, io.SeekStart); err != nil {
+		return fmt.Errorf("while rewinding a copy of s3://%s/%s: %w", srcBucket, srcObject, err)
+	}
+
+	_, err = s.client.PutObject(ctx, &s3.PutObjectInput{
+		Bucket:        aws.String(dstBucket),
+		Key:           aws.String(dstObject),
+		Body:          tmp,
+		ContentLength: aws.Int64(size),
+	})
+	if err != nil {
+		return fmt.Errorf("while writing s3://%s/%s: %w", dstBucket, dstObject, err)
 	}
 	return nil
 }
