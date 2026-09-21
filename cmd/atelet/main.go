@@ -58,6 +58,7 @@ import (
 	"github.com/agent-substrate/substrate/pkg/client/informers/externalversions"
 	listersv1alpha1 "github.com/agent-substrate/substrate/pkg/client/listers/api/v1alpha1"
 	"github.com/agent-substrate/substrate/pkg/proto/ateapipb"
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/google/go-containerregistry/pkg/authn"
@@ -232,6 +233,12 @@ func main() {
 		cfg, err := config.LoadDefaultConfig(ctx)
 		if err != nil {
 			serverboot.Fatal(ctx, "Failed to load S3 config", err)
+		}
+		// ATE_STORAGE_ANONYMOUS sends unsigned requests, letting an S3-compatible
+		// store authorize by bucket policy (e.g. OSS source-VPC allow) instead of
+		// credentials.
+		if os.Getenv("ATE_STORAGE_ANONYMOUS") == "true" {
+			cfg.Credentials = aws.AnonymousCredentials{}
 		}
 		wrappedGCS = ategcs.NewS3Client(s3.NewFromConfig(cfg, func(o *s3.Options) {
 			if usePathStyle := os.Getenv("AWS_S3_USE_PATH_STYLE"); usePathStyle == "true" {

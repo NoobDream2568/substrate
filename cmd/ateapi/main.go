@@ -47,6 +47,7 @@ import (
 	"github.com/agent-substrate/substrate/pkg/client/clientset/versioned"
 	"github.com/agent-substrate/substrate/pkg/client/informers/externalversions"
 	"github.com/agent-substrate/substrate/pkg/proto/ateapipb"
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -383,6 +384,12 @@ func newObjectStore(ctx context.Context) (objectstore.Store, error) {
 		cfg, err := config.LoadDefaultConfig(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("loading S3 config: %w", err)
+		}
+		// ATE_STORAGE_ANONYMOUS sends unsigned requests, letting an S3-compatible
+		// store authorize by bucket policy (e.g. OSS source-VPC allow) instead of
+		// credentials. The sentinel tells the signing middleware to skip signing.
+		if os.Getenv("ATE_STORAGE_ANONYMOUS") == "true" {
+			cfg.Credentials = aws.AnonymousCredentials{}
 		}
 		return objectstore.NewS3(s3.NewFromConfig(cfg, func(o *s3.Options) {
 			if os.Getenv("AWS_S3_USE_PATH_STYLE") == "true" {
