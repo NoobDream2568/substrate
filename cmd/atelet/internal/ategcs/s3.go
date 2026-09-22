@@ -54,6 +54,14 @@ func NewS3Client(client *s3.Client) ObjectStorage {
 		uploader: manager.NewUploader(client, func(u *manager.Uploader) {
 			u.PartSize = uploadPartSize
 			u.Concurrency = uploadConcurrency
+			// The uploader has its own RequestChecksumCalculation (default
+			// WhenSupported, ignoring the client-level config): multipart
+			// uploads stamp ChecksumAlgorithm=CRC32 onto every UploadPart,
+			// which the SDK then ships as an aws-chunked frame over HTTPS —
+			// and Alibaba OSS stores that framing as literal part bytes,
+			// corrupting any object over PartSize. WhenRequired keeps parts
+			// plain; per-part CRC32 is optional everywhere we deploy.
+			u.RequestChecksumCalculation = aws.RequestChecksumCalculationWhenRequired
 		}),
 	}
 }
