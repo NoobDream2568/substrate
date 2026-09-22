@@ -239,6 +239,12 @@ func main() {
 		// credentials.
 		if os.Getenv("ATE_STORAGE_ANONYMOUS") == "true" {
 			cfg.Credentials = aws.AnonymousCredentials{}
+			// An unsigned PUT can only carry the SDK's default CRC32 as a
+			// trailing aws-chunked frame, and OSS stores that framing as the
+			// object's literal bytes instead of de-chunking it. Skip checksums
+			// so PUTs go up as plain Content-Length bodies.
+			cfg.RequestChecksumCalculation = aws.RequestChecksumCalculationWhenRequired
+			cfg.ResponseChecksumValidation = aws.ResponseChecksumValidationWhenRequired
 		}
 		wrappedGCS = ategcs.NewS3Client(s3.NewFromConfig(cfg, func(o *s3.Options) {
 			if usePathStyle := os.Getenv("AWS_S3_USE_PATH_STYLE"); usePathStyle == "true" {
