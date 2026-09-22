@@ -9,6 +9,6 @@
 FROM swebench/sweb.eval.x86_64.astropy_1776_astropy-7336:latest
 RUN if command -v pip >/dev/null 2>&1; then pip install pexpect; else apt-get update && apt-get install -y python3-pexpect; fi
 RUN mkdir -p /opt/swebench
-COPY replay.py /opt/swebench/replay.py
-COPY astropy_trace.json /opt/swebench/astropy_trace.json
+COPY benchmarking/sweperf-image/replay.py /opt/swebench/replay.py
+COPY benchmarking/sweperf-image/astropy_trace.json /opt/swebench/astropy_trace.json
 ENTRYPOINT ["python3", "/opt/swebench/replay.py", "/opt/swebench/astropy_trace.json"]
